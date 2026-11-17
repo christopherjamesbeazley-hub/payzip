@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Payments</title>
+<style>
+  body{font:16px/1.6 system-ui,sans-serif;max-width:34rem;margin:15vh auto;padding:0 1.5rem;color:#222}
+  a.btn{display:inline-block;margin:.25rem .5rem .25rem 0;padding:.7rem 1.2rem;border-radius:.5rem;background:#222;color:#fff;text-decoration:none}
+  small{color:#777}
+</style>
+</head>
+<body>
+  <h1>Payment gateway is running</h1>
+  <p>Test buttons for the example product (€10.00):</p>
+  <a class="btn" href="/api/checkout?product=example-product&provider=mollie">Pay with Mollie</a>
+  <a class="btn" href="/api/checkout?product=example-product&provider=stripe">Pay with Stripe</a>
+  <p><small>Remove these buttons before going live.</small></p>
+</body>
+</html>
