@@ -11,7 +11,19 @@ export default async (req) => {
   if (!ok) return new Response("Bad signature", { status: 400 });
 
   try {
-    const paid = toPaidEvent(JSON.parse(raw));
+    const event = JSON.parse(raw);
+    if (event.type === "checkout.session.expired" || event.type === "checkout.session.async_payment_failed") {
+      console.log(JSON.stringify({
+        provider: "stripe",
+        eventType: event.type,
+        status: event.type === "checkout.session.expired" ? "expired" : "failed",
+        eventId: event.id,
+        checkoutSessionId: event.data.object.id,
+      }));
+      return new Response("ok");
+    }
+
+    const paid = toPaidEvent(event);
     if (paid) await fulfil(paid);
     return new Response("ok");
   } catch (err) {
