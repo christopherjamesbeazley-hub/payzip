@@ -4,18 +4,32 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Payments</title>
+<title>payzip</title>
 <style>
-  body{font:16px/1.6 system-ui,sans-serif;max-width:34rem;margin:15vh auto;padding:0 1.5rem;color:#222}
-  a.btn{display:inline-block;margin:.25rem .5rem .25rem 0;padding:.7rem 1.2rem;border-radius:.5rem;background:#222;color:#fff;text-decoration:none}
+  body{font:16px/1.6 system-ui,sans-serif;max-width:38rem;margin:10vh auto;padding:0 1.5rem;color:#222}
+  pre{background:#f4f4f4;padding:1rem;border-radius:.5rem;overflow:auto;font-size:.85rem}
   small{color:#777}
+  section{margin:2rem 0}
 </style>
+<script src="/embed.js" defer></script>
 </head>
 <body>
-  <h1>Payment gateway is running</h1>
-  <p>Test buttons for the example product (€10.00):</p>
-  <a class="btn" href="/api/checkout?product=example-product&provider=mollie">Pay with Mollie</a>
-  <a class="btn" href="/api/checkout?product=example-product&provider=stripe">Pay with Stripe</a>
-  <p><small>Remove these buttons before going live.</small></p>
+  <h1>payzip is running</h1>
+
+  <section>
+    <h2>Live test</h2>
+    <p>These are the same buttons any website gets. The test product is €1.00. Refund it in Stripe afterwards.</p>
+    <div data-payzip="live-test"></div>
+  </section>
+
+  <section>
+    <h2>Add pay buttons to any website</h2>
+    <p>Paste this where the button should appear, and change <code>live-test</code> to a product id from <code>products.mjs</code>:</p>
+    <pre>&lt;script src="https://payzip.netlify.app/embed.js" defer&gt;&lt;/script&gt;
+&lt;div data-payzip="live-test" data-payzip-lang="nl"&gt;&lt;/div&gt;</pre>
+    <p>Or use a plain link: <code>https://payzip.netlify.app/api/checkout?product=live-test&amp;provider=stripe</code></p>
+  </section>
+
+  <p><small>This page is not listed in search engines. Order events appear in Netlify → Logs → Functions.</small></p>
 </body>
 </html>
