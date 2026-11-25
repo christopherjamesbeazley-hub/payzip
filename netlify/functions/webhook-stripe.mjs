@@ -1,4 +1,4 @@
-import { verifySignature, toPaidEvent } from "../../lib/stripe.mjs";
+import { checkSignature, toPaidEvent } from "../../lib/stripe.mjs";
 import { fulfil } from "../../lib/fulfil.mjs";
 
 export const config = { path: "/api/webhook/stripe" };
@@ -7,8 +7,11 @@ export default async (req) => {
   if (req.method !== "POST") return new Response("POST only", { status: 405 });
 
   const raw = await req.text();
-  const ok = verifySignature(raw, req.headers.get("stripe-signature"), process.env.STRIPE_WEBHOOK_SECRET);
-  if (!ok) return new Response("Bad signature", { status: 400 });
+  const check = checkSignature(raw, req.headers.get("stripe-signature"), process.env.STRIPE_WEBHOOK_SECRET);
+  if (!check.ok) {
+    console.error("STRIPE WEBHOOK REJECTED:", check.reason, check.detail ? `— ${check.detail}` : "");
+    return new Response(`Bad signature: ${check.reason}`, { status: 400 });
+  }
 
   try {
     const event = JSON.parse(raw);
