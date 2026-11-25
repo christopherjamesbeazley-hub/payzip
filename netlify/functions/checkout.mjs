@@ -10,6 +10,19 @@ const fail = (status, message) =>
     headers: { "Content-Type": "application/json" },
   });
 
+// The site the buyer clicked from (just its address, e.g.
+// https://www.outside-the-box-solutions.com), so the thank-you page can
+// offer a way back. Ignored when the click came from payzip itself.
+function siteOf(referer, base) {
+  try {
+    const u = new URL(referer);
+    if (!["http:", "https:"].includes(u.protocol)) return undefined;
+    return u.origin === new URL(base).origin ? undefined : u.origin;
+  } catch {
+    return undefined;
+  }
+}
+
 async function readParams(req) {
   const params = Object.fromEntries(new URL(req.url).searchParams);
   if (req.method === "POST") {
@@ -45,6 +58,7 @@ export default async (req) => {
   const ref = p.ref ? String(p.ref).slice(0, 100) : undefined;
 
   const base = (process.env.URL || new URL(req.url).origin).replace(/\/$/, "");
+  const returnTo = product.returnUrl || siteOf(req.headers.get("referer"), base);
 
   try {
     const result = await provider.createCheckout({
@@ -56,6 +70,7 @@ export default async (req) => {
       successUrl: product.successUrl || `${base}/thanks.html`,
       cancelUrl: product.cancelUrl || `${base}/cancelled.html`,
       webhookUrl: `${base}/api/webhook/mollie`,
+      returnTo,
     });
     if (result.pending) await notifyPending(result.pending);
     return new Response(null, { status: 303, headers: { Location: result.url } });

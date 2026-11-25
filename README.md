@@ -37,6 +37,12 @@ Everything you sell lives in `products.mjs`: name, price in cents, and optionall
 
 **Mollie** — optional, same flow as Stripe. Its button only appears once `MOLLIE_API_KEY` is set.
 
+## Thank-you page
+
+After a Stripe payment the buyer lands on `thanks.html`, which asks Stripe whether the payment really went through and shows "Payment received", the product, the amount, a receipt link and a button back to the site they came from. It speaks Dutch or English depending on the buyer's browser, and takes its colours and seller name from your Stripe branding (Settings → Branding), so it matches every owner automatically.
+
+The receipt link needs two extra read permissions on a restricted key: **PaymentIntents: Read** and **Charges: Read**. Without them the page still works, just without that link. To send buyers back to a specific page instead of the site they clicked from, give the product a `returnUrl`.
+
 ## Order records
 
 Every order event is written to Netlify → Logs → Functions, and POSTed to `FULFILMENT_WEBHOOK_URL` if you set one (Make, Zapier, n8n, a Google Sheet …):

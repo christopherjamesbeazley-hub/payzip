@@ -4,11 +4,145 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Thank you</title>
-<style>body{font:16px/1.6 system-ui,sans-serif;max-width:34rem;margin:15vh auto;padding:0 1.5rem;color:#222}</style>
+<title>Payment</title>
+<style>
+  /* Colours come from your Stripe branding (Settings → Branding) when the
+     payment is found. These are the fallbacks. */
+  :root { --bg: #1f1f1f; --accent: #1f1f1f; --accent-text: #fff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+         padding: 1.5rem; background: var(--bg); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; color: #1d1d1f; }
+  .card { width: 100%; max-width: 26rem; background: #fff; border-radius: 1rem; padding: 2.25rem 2rem 2rem;
+          box-shadow: 0 20px 50px rgba(0,0,0,.25); text-align: center; }
+  .seller { font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; color: #777; margin: 0 0 1.25rem; min-height: 1.2em; }
+  .icon { width: 3.5rem; height: 3.5rem; margin: 0 auto 1rem; border-radius: 50%; display: grid; place-items: center;
+          font-size: 1.6rem; font-weight: 700; color: #fff; background: #c7c7cc; }
+  .icon.ok { background: #1f9d55; } .icon.wait { background: #e0a100; } .icon.no { background: #b3261e; }
+  h1 { font-size: 1.45rem; margin: 0 0 .5rem; }
+  .lead { margin: 0 0 1.5rem; color: #444; }
+  .line { display: flex; justify-content: space-between; gap: 1rem; padding: .85rem 0; border-top: 1px solid #eee; text-align: left; }
+  .line:last-of-type { border-bottom: 1px solid #eee; }
+  .line span:first-child { color: #666; } .line span:last-child { font-weight: 600; }
+  .actions { display: flex; flex-direction: column; gap: .6rem; margin-top: 1.5rem; }
+  .btn { display: block; padding: .8rem 1rem; border-radius: .6rem; font-weight: 600; text-decoration: none; }
+  .btn.primary { background: var(--accent); color: var(--accent-text); }
+  .btn.secondary { color: #333; border: 1px solid #ddd; }
+  .spinner { width: 2.25rem; height: 2.25rem; margin: 0 auto 1rem; border: 3px solid #eee; border-top-color: #999;
+             border-radius: 50%; animation: spin .9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  [hidden] { display: none !important; }
+</style>
 </head>
 <body>
-  <h1>Thank you</h1>
-  <p>Your payment may still be processing. This page does not confirm payment. Please check your payment provider's status or contact the seller if you need help.</p>
+<main class="card" aria-live="polite">
+  <p class="seller" id="seller"></p>
+  <div class="spinner" id="spinner"></div>
+  <div class="icon" id="icon" hidden></div>
+  <h1 id="title"></h1>
+  <p class="lead" id="lead"></p>
+  <div id="details" hidden>
+    <div class="line"><span id="l-item"></span><span id="item"></span></div>
+    <div class="line"><span id="l-amount"></span><span id="amount"></span></div>
+  </div>
+  <div class="actions">
+    <a class="btn primary" id="receipt" target="_blank" rel="noopener" hidden></a>
+    <a class="btn secondary" id="back" hidden></a>
+  </div>
+</main>
+<script>
+(function () {
+  var nl = /^nl\b/i.test(navigator.language || "");
+  var T = nl ? {
+    checking: "Je betaling wordt gecontroleerd…", checkingLead: "Een moment geduld.",
+    paid: "Betaling ontvangen", paidLead: "Bedankt! Je betaling is gelukt.",
+    wait: "Betaling onderweg", waitLead: "Je bank bevestigt de betaling nog. Je hoort het zodra die binnen is.",
+    no: "Betaling niet afgerond", noLead: "Er is niets afgeschreven. Je kunt het opnieuw proberen.",
+    unknown: "Bedankt", unknownLead: "Heb je een betaling afgerond? Dan ontvang je een bevestiging van de verkoper.",
+    item: "Product", amount: "Bedrag", receipt: "Bekijk betaalbewijs", back: "Terug naar ", backPlain: "Terug naar de website"
+  } : {
+    checking: "Checking your payment…", checkingLead: "One moment, please.",
+    paid: "Payment received", paidLead: "Thank you! Your payment went through.",
+    wait: "Payment on its way", waitLead: "Your bank is still confirming the payment. You'll hear from us once it's in.",
+    no: "Payment not completed", noLead: "Nothing was charged. You can try again.",
+    unknown: "Thank you", unknownLead: "If you completed a payment, you'll receive a confirmation from the seller.",
+    item: "Item", amount: "Amount", receipt: "View receipt", back: "Back to ", backPlain: "Back to the website"
+  };
+  document.documentElement.lang = nl ? "nl" : "en";
+  var $ = function (id) { return document.getElementById(id); };
+  var hex = /^#[0-9a-f]{3,8}$/i;
+
+  function show(kind, data) {
+    data = data || {};
+    $("spinner").hidden = kind !== "checking";
+    var icon = $("icon");
+    icon.hidden = kind === "checking";
+    icon.className = "icon " + ({ paid: "ok", wait: "wait", no: "no" }[kind] || "");
+    icon.textContent = { paid: "✓", wait: "…", no: "✕", unknown: "i" }[kind] || "";
+    $("title").textContent = T[kind];
+    $("lead").textContent = T[kind + "Lead"];
+    document.title = T[kind];
+
+    var b = data.brand || {};
+    if (b.name) $("seller").textContent = b.name;
+    if (hex.test(b.background || "")) document.documentElement.style.setProperty("--bg", b.background);
+    if (hex.test(b.accent || "")) {
+      document.documentElement.style.setProperty("--accent", b.accent);
+      document.documentElement.style.setProperty("--accent-text", textOn(b.accent));
+    }
+
+    var showDetails = (kind === "paid" || kind === "wait") && data.amount != null;
+    $("details").hidden = !showDetails;
+    if (showDetails) {
+      $("l-item").textContent = T.item; $("l-amount").textContent = T.amount;
+      $("item").textContent = data.productName || "—";
+      $("amount").textContent = money(data.amount, data.currency);
+    }
+
+    var r = $("receipt");
+    r.hidden = !(kind === "paid" && /^https:\/\/pay\.stripe\.com\//.test(data.receiptUrl || ""));
+    if (!r.hidden) { r.href = data.receiptUrl; r.textContent = T.receipt; }
+
+    var back = $("back"), site = safeSite(data.returnTo);
+    back.hidden = !site;
+    if (site) { back.href = site.href; back.textContent = T.back + site.host; }
+  }
+
+  function money(cents, cur) {
+    try { return new Intl.NumberFormat(nl ? "nl-NL" : "en-IE", { style: "currency", currency: cur || "EUR" }).format(cents / 100); }
+    catch (e) { return (cents / 100).toFixed(2) + " " + (cur || ""); }
+  }
+  function safeSite(url) {
+    try { var u = new URL(url); return /^https?:$/.test(u.protocol) ? { href: u.origin + "/", host: u.host.replace(/^www\./, "") } : null; }
+    catch (e) { return null; }
+  }
+  // Dark text on light brand colours, white text on dark ones.
+  function textOn(c) {
+    c = c.replace("#", ""); if (c.length === 3) c = c.replace(/./g, "$&$&");
+    var r = parseInt(c.substr(0, 2), 16), g = parseInt(c.substr(2, 2), 16), b = parseInt(c.substr(4, 2), 16);
+    return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? "#111" : "#fff";
+  }
+
+  var id = new URLSearchParams(location.search).get("session_id");
+  if (!id) return show("unknown");
+  show("checking");
+
+  var tries = 0;
+  (function check() {
+    fetch("/api/status?session_id=" + encodeURIComponent(id), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.state === "paid") return show("paid", d);
+        if (d.state === "processing") {
+          show("wait", d);
+          if (++tries < 10) setTimeout(check, 3000);   // bank payments can take a moment
+          return;
+        }
+        if (d.state === "unpaid" || d.state === "expired") return show("no", d);
+        show("unknown", d);
+      })
+      .catch(function () { show("unknown"); });
+  })();
+})();
+</script>
 </body>
 </html>
