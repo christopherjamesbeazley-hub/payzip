@@ -21,8 +21,8 @@
 // One payzip can sell for several websites: give each site's products
 // their own successUrl / cancelUrl pointing back to that site.
 // ─────────────────────────────────────────────────────────────
-const tarotPrice = Number(process.env.TAROT_PRICE_CENTS);
-const tarotOrigin = process.env.TAROT_SITE_ORIGIN;
+const tarotPrice = Number(process.env.TAROT_PRICE_CENTS || 1000);
+const tarotOrigin = process.env.TAROT_SITE_ORIGIN || "https://deploy-content-8b1bf4.netlify.app";
 export const products = {
   ...(Number.isSafeInteger(tarotPrice) && tarotPrice >= 50 && /^https:\/\/[a-z0-9.-]+$/i.test(tarotOrigin || "") ? {
     "tarot-reading": {
