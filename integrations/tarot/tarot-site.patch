@@ -1,0 +1,180 @@
+--- a/index.html
++++ b/index.html
+@@ -40,8 +40,7 @@
+         <h1 id="hero-title">The cards are ready.</h1>
+         <p class="lede">Sometimes the most interesting answers begin with a better question.</p>
+         <div class="entrance__actions">
+-          <button class="btn btn--primary" type="button" id="begin">Begin your reading</button>
+-          <button class="btn btn--ghost" type="button" data-quick="single">Draw a single card</button>
++          <a class="btn btn--primary" id="buy-reading" href="/.netlify/functions/paid-reading?start=1">Pay for my one-card reading</a>
+         </div>
+         <p class="deck-badge" id="deck-badge" aria-live="polite">Loading deck…</p>
+       </div>
+@@ -93,7 +92,7 @@
+         <article class="panel" id="ai-panel">
+           <h3>A deeper reflection</h3>
+           <p class="small muted">Optional. Pressing the button sends the drawn cards, their positions and your question to an AI service, which writes a reflective interpretation. It cannot change the cards.</p>
+-          <button class="btn" type="button" id="ai-button">Ask for an AI reflection</button>
++          <button hidden class="btn" type="button" id="ai-button">Ask for an AI reflection</button>
+           <div class="ai-output" id="ai-output" aria-live="polite"></div>
+         </article>
+         <div class="reading__actions">
+--- a/site-manifest.json
++++ b/site-manifest.json
+@@ -106,6 +106,7 @@
+     "js/theme.js",
+     "js/zip.js",
+     "netlify/functions/interpret.js",
++    "netlify/functions/paid-reading.js",
+     "netlify.toml",
+     "package.json",
+     "scripts/build-manifest.mjs",
+--- /dev/null
++++ b/tests/paid-reading.test.mjs
+@@ -0,0 +1,29 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import endpoint from '../netlify/functions/paid-reading.js';
++test('checkout binds a paid draw to its originating browser', async t => {
++  Object.assign(process.env, { TAROT_PRICE_CENTS: '300', TAROT_STRIPE_READ_KEY: 'mock',
++    SUPABASE_URL: 'https://db.invalid', SUPABASE_SERVICE_ROLE_KEY: 'mock', PAYZIP_ORIGIN: 'https://checkout.invalid' });
++  const start = await endpoint.handler({ httpMethod: 'GET', headers: {}, queryStringParameters: { start: '1' } });
++  assert.equal(start.statusCode, 303);
++  const owner = new URL(start.headers.Location).searchParams.get('ref');
++  const request = { httpMethod: 'POST', headers: { cookie: start.headers['Set-Cookie'].split(';')[0] }, queryStringParameters: { session_id: 'cs_test_123' } };
++  const session = { id: 'cs_test_123', client_reference_id: owner, metadata: { productId: 'tarot-reading', quantity: '1' },
++    mode: 'payment', currency: 'eur', amount_total: 300, status: 'complete', payment_status: 'unpaid' };
++  let writes = 0;
++  t.mock.method(globalThis, 'fetch', async url => {
++    if (String(url).includes('stripe.com')) return Response.json(session);
++    writes++;
++    return Response.json({id:'major-00',reversed:false});
++  });
++  assert.equal((await endpoint.handler(request)).statusCode, 409);
++  session.payment_status = 'paid';
++  session.amount_total = 50;
++  assert.equal((await endpoint.handler(request)).statusCode, 403);
++  session.amount_total = 300;
++  const foreign = { ...request, headers: {cookie: '__Host-tarot-owner=' + 'a'.repeat(64)} };
++  assert.equal((await endpoint.handler(foreign)).statusCode, 403);
++  assert.equal(writes, 0);
++  assert.deepEqual(JSON.parse((await endpoint.handler(request)).body), {id:'major-00',reversed:false});
++  assert.equal(writes, 1);
++});
+--- a/js/app.js
++++ b/js/app.js
+@@ -1,5 +1,4 @@
+ import { loadCatalogue, loadSpreads, loadActiveDeck, applyDeckTheme } from './deck.js';
+-import { prepareDeck } from './random.js';
+ import { createCard } from './card-element.js';
+ import { shuffleAnimation, revealFan, drawToSlot } from './animations.js';
+ import { positionReading, combinedReading } from './interpretation.js';
+@@ -66,6 +65,18 @@
+   renderHero();
+   renderModes();
+   bindEvents();
++  const session = new URL(location.href).searchParams.get('session_id');
++  if (session) {
++    $('#buy-reading').hidden = true;
++    try {
++      const response = await fetch('/.netlify/functions/paid-reading?session_id=' + encodeURIComponent(session), { method: 'POST' });
++      const result = await response.json();
++      if (!response.ok) throw new Error(result.error);
++      await startReading('single', '', true, result);
++    } catch (error) {
++      $('#deck-badge').textContent = error.message || 'Refresh to reopen your reading.';
++    }
++  }
+ }
+ 
+ function renderHero() {
+@@ -102,14 +113,7 @@
+ }
+ 
+ function bindEvents() {
+-  $('#begin').addEventListener('click', () => show('setup'));
+-  document.querySelector('[data-quick="single"]').addEventListener('click', () => startReading('single', '', true));
+-  $('#setup-form').addEventListener('submit', (e) => {
+-    e.preventDefault();
+-    const fd = new FormData(e.target);
+-    startReading(fd.get('mode'), $('#question').value.trim(), $('#reversals').checked);
+-  });
+-  $('#new-reading').addEventListener('click', () => show('setup'));
++  $('#new-reading').addEventListener('click', () => location.assign(location.pathname));
+   $('#save-reading').addEventListener('click', saveReading);
+   $('#ai-button').addEventListener('click', requestAi);
+   $('#open-journal').addEventListener('click', openJournal);
+@@ -123,11 +127,11 @@
+ }
+ 
+ // ---------- reading flow ----------
+-async function startReading(spreadId, question, reversals) {
++async function startReading(spreadId, question, reversals, draw) {
+   const spread = state.spreads.find((s) => s.id === spreadId) || state.spreads[0];
+   Object.assign(state, { spread, question, reversals, drawn: [], finished: false, busy: true, chapter: 0, perspective: 'mirror' });
+   // The full order is fixed here, with secure randomness, before any animation runs.
+-  state.prepared = prepareDeck(state.catalogue.cards.map((c) => c.id), { reversals }).map((e) => ({ ...e, used: false }));
++  state.prepared = [{ ...draw, used: false }];
+ 
+   show('table');
+   $('#table-title').textContent = spread.name;
+--- /dev/null
++++ b/netlify/functions/paid-reading.js
+@@ -0,0 +1,47 @@
++const { randomBytes, randomInt, createHash } = require('node:crypto');
++const { cards } = require('../../data/cards.json');
++const headers = { 'Cache-Control': 'no-store', 'Content-Type': 'application/json' };
++const reply = (statusCode, error) => ({ statusCode, headers, body: JSON.stringify({error}) });
++const cookieName = '__Host-tarot-owner';
++
++exports.handler = async event => {
++  const env = process.env;
++  const price = Number(env.TAROT_PRICE_CENTS);
++  if (!env.TAROT_STRIPE_READ_KEY || !env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY ||
++      !Number.isSafeInteger(price) || price < 50 || !env.PAYZIP_ORIGIN)
++    return reply(503, 'Paid readings are awaiting configuration.');
++  const cookie = (event.headers.cookie || '').split(';').map(x => x.trim()).find(x => x.startsWith(cookieName + '='));
++  let owner = cookie?.slice(cookieName.length + 1);
++  if (!/^[a-f0-9]{64}$/.test(owner || '')) owner = null;
++  const reference = (value, cents) => cents + '.' + createHash('sha256').update(value + ':' + cents).digest('hex');
++  if (event.httpMethod === 'GET' && event.queryStringParameters?.start === '1') {
++    owner ||= randomBytes(32).toString('hex');
++    const url = new URL('/api/checkout', env.PAYZIP_ORIGIN);
++    url.search = new URLSearchParams({ product: 'tarot-reading', provider: 'stripe', ref: reference(owner, price) });
++    return { statusCode: 303, headers: { ...headers, Location: url.href,
++      'Set-Cookie': cookieName + '=' + owner + '; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=31536000' }, body: '' };
++  }
++  if (event.httpMethod !== 'POST') return reply(405, 'Use POST.');
++  if (!owner) return reply(403, 'Open the reading in the browser used for checkout.');
++  const id = event.queryStringParameters?.session_id || '';
++  if (!/^cs_(test|live)_[a-zA-Z0-9]+$/.test(id)) return reply(400, 'Invalid checkout reference.');
++  try {
++    const session = await fetch('https://api.stripe.com/v1/checkout/sessions/' + id,
++      { headers: { Authorization: 'Bearer ' + env.TAROT_STRIPE_READ_KEY }, signal: AbortSignal.timeout(8000) });
++    if (!session.ok) return reply(session.status === 404 ? 404 : 503, 'Unable to verify this checkout.');
++    const s = await session.json();
++    if (s.id !== id || s.client_reference_id !== reference(owner, s.amount_total) || s.metadata?.productId !== 'tarot-reading' ||
++        s.metadata.quantity !== '1' || s.mode !== 'payment' || s.currency !== 'eur' || !Number.isSafeInteger(s.amount_total) || s.amount_total < 50)
++      return reply(403, 'This checkout does not match this reading.');
++    if (s.status !== 'complete' || s.payment_status !== 'paid') return reply(409, 'Payment is pending. Refresh after confirmation.');
++    const database = await fetch(new URL('/rest/v1/rpc/claim_tarot_draw', env.SUPABASE_URL), {
++      method: 'POST', headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: 'Bearer ' + env.SUPABASE_SERVICE_ROLE_KEY,
++        'Content-Type': 'application/json' }, signal: AbortSignal.timeout(8000),
++      body: JSON.stringify({ purchase: id, buyer: reference(owner, s.amount_total), candidate: cards[randomInt(cards.length)].id, flipped: Boolean(randomInt(2)) })
++    });
++    if (!database.ok) throw new Error();
++    const draw = await database.json();
++    if (!cards.some(c => c.id === draw?.id) || typeof draw.reversed !== 'boolean') throw new Error();
++    return { statusCode: 200, headers, body: JSON.stringify(draw) };
++  } catch { return reply(503, 'Your reading could not be loaded. Refresh to try again.'); }
++};
+--- a/netlify/functions/interpret.js
++++ b/netlify/functions/interpret.js
+@@ -135,6 +135,7 @@
+ 
+ async function handler(event) {
+   if (event.httpMethod !== 'POST') return json(405, { error: 'Use POST.' });
++  if (process.env.PAYZIP_ORIGIN) return json(503, { error: 'This purchase includes the catalogue reading.' });
+   if (!process.env.AI_API_KEY) return json(503, { error: 'AI reflection is not configured on this site.' });
+   if ((event.body || '').length > 8000) return json(413, { error: 'Request too large.' });
+   const ip = event.headers?.['x-nf-client-connection-ip'] || event.headers?.['x-forwarded-for'] || 'unknown';
