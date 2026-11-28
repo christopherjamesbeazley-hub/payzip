@@ -21,7 +21,15 @@
 // One payzip can sell for several websites: give each site's products
 // their own successUrl / cancelUrl pointing back to that site.
 // ─────────────────────────────────────────────────────────────
+const tarotHome = "https://parot-tarot-project.netlify.app/";
+const tarot = (name, amount) => ({ name, amount, currency: "EUR", providers: ["stripe"], hidden: true,
+  requiresTarotOrder: true, successUrl: tarotHome, cancelUrl: tarotHome });
+
 export const products = {
+  "parot-single": tarot("Single Card", 400),
+  "parot-past-present-future": tarot("Past–Present–Future", 1000),
+  "parot-crossroads": tarot("Crossroads", 1000),
+  "parot-celtic-cross": tarot("Celtic Cross", 2500),
   // €1 product for checking a real payment end to end. Refund it in the
   // Stripe dashboard afterwards. Delete it once you've gone live.
   "live-test": {
