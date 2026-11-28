@@ -54,6 +54,9 @@ export default async (req) => {
   if (providerName === "tikkie" && quantity !== 1) {
     return fail(400, "Tikkie links sell one item at a time");
   }
+  if (productId === "tarot-reading" && (quantity !== 1 || !(String(p.ref || "").startsWith(product.amount + ".") && /^\d+\.[a-f0-9]{64}$/.test(p.ref)))) {
+    return fail(400, "Start a single reading from the tarot site");
+  }
   const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email || "") ? p.email : undefined;
   const ref = p.ref ? String(p.ref).slice(0, 100) : undefined;
 
