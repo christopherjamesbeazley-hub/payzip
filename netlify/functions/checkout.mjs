@@ -58,6 +58,14 @@ export default async (req) => {
   const ref = p.ref ? String(p.ref).slice(0, 100) : undefined;
 
   const base = (process.env.URL || new URL(req.url).origin).replace(/\/$/, "");
+  let successUrl = product.successUrl || `${base}/thanks.html`;
+  if (product.requiresTarotOrder) {
+    if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(ref || "") || quantity !== 1)
+      return fail(400, "Start this reading from Parot Tarot.");
+    const destination = new URL(successUrl);
+    destination.searchParams.set("order", ref);
+    successUrl = destination.href;
+  }
   const returnTo = product.returnUrl || siteOf(req.headers.get("referer"), base);
 
   try {
@@ -67,7 +75,7 @@ export default async (req) => {
       quantity,
       email,
       ref,
-      successUrl: product.successUrl || `${base}/thanks.html`,
+      successUrl,
       cancelUrl: product.cancelUrl || `${base}/cancelled.html`,
       webhookUrl: `${base}/api/webhook/mollie`,
       returnTo,
